@@ -1,0 +1,34 @@
+{
+  "name": "pure-javascript-video-player-for-local-video-files",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development && next dev -p 3001",
+    "build": "shx rm -rf ./.next && shx rm -f ./missing-keys.csv && shx rm -f ./updated-keys.csv && shx rm -f ./existing-keys.csv && next build --debug",
+    "start": "next start -p 3001"
+  },
+  "dependencies": {
+    "@dotenvx/dotenvx": "^1.44.2",
+    "@tailwindcss/typography": "^0.5.15",
+    "@types/node": "^20.12.11",
+    "@types/react": "^18.3.2",
+    "@types/react-dom": "18.3.0",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "autoprefixer": "^10.4.19",
+    "cross-env": "^7.0.3",
+    "dotenv": "^16.5.0",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^15.0.3",
+    "next": "^15",
+    "postcss": "^8.4.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "shx": "^0.3.4",
+    "tailwindcss": "^3.4.3",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}
