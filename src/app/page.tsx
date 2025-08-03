@@ -6,7 +6,26 @@ import {ChangeEvent} from "react";
 import {MP4BoxBuffer} from "mp4box";
 import * as MP4Box from "mp4box"
 
+
+type InitSegsType = {
+    tracks: {
+        id: number;
+        user: unknown;
+    }[];
+    buffer: MP4BoxBuffer;
+}
+
+type VideoSegment = {
+    id: number;
+    user: unknown;
+    buffer: ArrayBuffer;
+    nextSample: number;
+    last: boolean;
+}
+
 MP4Box.Log.setLogLevel(MP4Box.Log.info)
+
+const supportedTrackTypes = ['audio', 'video']
 
 export default function TestPlayVideoSegmented(): JSX.Element {
 
@@ -19,12 +38,50 @@ export default function TestPlayVideoSegmented(): JSX.Element {
     const [mp4boxBytesRead, setMp4boxBytesRead] = useState<number>(0);
     const [mp4BoxFileInfo, setMp4BoxFileInfo] = useState<MP4Box.Movie | null>(null);
 
-    const mp4BoxFile: MP4Box.ISOFile = createMp4BoxFile(setMp4BoxFileInfo);
-
     const bytesToProgress = (bytesRead: number) => {
         setMp4boxBytesRead(bytesRead);
         setMp4boxLoadingProgress((bytesRead / selectedFile.size) * 100)
     };
+
+    let myMediaSource: MediaSource;
+    let videoSourceBuffer: SourceBuffer;
+
+    let isLastSegment = false;
+    const segments: VideoSegment[] =[]
+
+    function onFileInfoReadyCb(info: MP4Box.Movie, initSegs: InitSegsType): void {
+        setMp4BoxFileInfo(info)
+        myMediaSource = new MediaSource();
+        myMediaSource.addEventListener("sourceopen", () => {
+            videoSourceBuffer = myMediaSource.addSourceBuffer(info.mime)
+            videoSourceBuffer.addEventListener("updateend", () => {
+                const segment: VideoSegment | undefined = segments.shift()
+                if (segment) {
+                    isLastSegment = segment.last;
+                    videoSourceBuffer.appendBuffer(segment.buffer)
+                } else {
+                    if (isLastSegment) {
+                        if (myMediaSource.readyState === 'open') {
+                            myMediaSource.endOfStream()
+                        }
+                    }
+                }
+            })
+            videoSourceBuffer.appendBuffer(initSegs.buffer)
+
+        })
+
+        const videoTag: HTMLVideoElement = document.getElementById("my-video") as HTMLVideoElement;
+        videoTag.onerror = (e) => {
+            console.error("video error", e, videoTag?.error)
+        }
+        videoTag.src = URL.createObjectURL(myMediaSource);
+
+    }
+
+    function onSegmentReadyCb(id: number, user: unknown, buffer: ArrayBuffer, nextSample: number, last: boolean): void {
+        segments.push({id, user, buffer, nextSample, last})
+    }
 
     return (
         <div className={"p-5 flex flex-col items-center justify-center"}>
@@ -34,7 +91,7 @@ export default function TestPlayVideoSegmented(): JSX.Element {
 
             {selectedFile &&
                 <div>
-                    <button type={"button"} onClick={() => onReadFile(selectedFile, mp4BoxFile, bytesToProgress)}
+                    <button type={"button"} onClick={() => onReadFile(selectedFile, onFileInfoReadyCb, onSegmentReadyCb, bytesToProgress)}
                             className="mt-10 text-white bg-green-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800"
                     >Read file {selectedFile.name}
                     </button>
@@ -49,7 +106,7 @@ export default function TestPlayVideoSegmented(): JSX.Element {
                 </div>
             }
 
-            <video id={"my-video"} className={"border-4 border-red-700 mx-auto my-3"} controls autoPlay/>
+            <video id={"my-video"} className={"border-4 border-red-700 mx-auto my-3 max-w-96"} controls autoPlay/>
         </div>
     )
 
@@ -131,14 +188,18 @@ function displayMp4BoxFileInfo(info: MP4Box.Movie) {
 }
 
 function onReadFile(selectedFile: File,
-                    mp4BoxFile: MP4Box.ISOFile<unknown, unknown>,
+                    onFileInfoReadyCb: (info: MP4Box.Movie, initSegs: InitSegsType) => void,
+                    onSegmentReadyCb: (id: number, user: unknown, buffer: ArrayBuffer, nextSample: number, last: boolean) => void,
                     bytesToProgress: (p: number) => void): void {
+
+    const mp4BoxFile: MP4Box.ISOFile<unknown, unknown> = createMp4BoxFile(onFileInfoReadyCb, onSegmentReadyCb);
 
     selectedFile.stream().pipeTo(readStreamIntoMp4IsoFile(mp4BoxFile, bytesToProgress));
 
 }
 
-function createMp4BoxFile(setMp4BoxFileInfo: (info: MP4Box.Movie) => void): MP4Box.ISOFile<unknown, unknown> {
+function createMp4BoxFile(onFileInfoReadyCb: (info: MP4Box.Movie, initSegs: InitSegsType) => void,
+                          onSegmentReadyCb: (id: number, user: unknown, buffer: ArrayBuffer, nextSample: number, last: boolean) => void): MP4Box.ISOFile<unknown, unknown> {
     const mp4BoxFile: MP4Box.ISOFile<unknown, unknown> = MP4Box.createFile(true);
 
     mp4BoxFile.onError = (m: string, msg: string) => {
@@ -147,8 +208,25 @@ function createMp4BoxFile(setMp4BoxFileInfo: (info: MP4Box.Movie) => void): MP4B
 
     mp4BoxFile.onReady = (info: MP4Box.Movie) => {
         console.info(info);
-        setMp4BoxFileInfo(info)
+
+        var options = { nbSamples: 1000, sizePerSegment: 1048576  /*1Mb*/};
+        for (let i = 0; i < info.tracks.length; ++i) {
+            if (supportedTrackTypes.filter(t => t == info.tracks[i].type).length > 0) {
+                console.log("adding segmentation option for track ", info.tracks[i].id, info.tracks[i].type)
+                mp4BoxFile.setSegmentOptions(info.tracks[i].id, info.tracks[i].type, options);
+            }
+        }
+        var initSegs: InitSegsType = mp4BoxFile.initializeSegmentation();
+
+        onFileInfoReadyCb(info, initSegs)
+
+        mp4BoxFile.start();
     };
+
+    mp4BoxFile.onSegment = (id: number, user: unknown, buffer: ArrayBuffer, nextSample: number, last: boolean) => {
+        console.log("segment received", "id", id, "user", user, "buffer", buffer.byteLength, "nextSample", nextSample, last);
+        onSegmentReadyCb(id, user, buffer, nextSample, last)
+    }
 
     return mp4BoxFile;
 }
