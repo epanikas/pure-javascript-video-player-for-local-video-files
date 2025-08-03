@@ -51,9 +51,19 @@ export default function TestPlayVideoSegmented(): JSX.Element {
 
     function onFileInfoReadyCb(info: MP4Box.Movie, initSegs: InitSegsType): void {
         setMp4BoxFileInfo(info)
+
+        let codecs: string[] = [];
+        for (let i = 0; i < info.tracks.length; ++i) {
+            if (supportedTrackTypes.filter(t => t == info.tracks[i].type).length > 0) {
+                codecs.push(info.tracks[i].codec)
+            }
+        }
+
+        const mime = "video/mp4; codecs=\"" + codecs.join(",") + "\"";
+
         myMediaSource = new MediaSource();
         myMediaSource.addEventListener("sourceopen", () => {
-            videoSourceBuffer = myMediaSource.addSourceBuffer(info.mime)
+            videoSourceBuffer = myMediaSource.addSourceBuffer(mime)
             videoSourceBuffer.addEventListener("updateend", () => {
                 const segment: VideoSegment | undefined = segments.shift()
                 if (segment) {
