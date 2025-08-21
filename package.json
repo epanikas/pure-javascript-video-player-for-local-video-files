@@ -23,7 +23,7 @@
     "dotenv": "^16.5.0",
     "eslint": "^8.56.0",
     "eslint-config-next": "^15.0.3",
-    "mp4box-forked": "../../../ws_nodejs/mp4box-forked.js",
+    "mp4box": "1.4.6",
     "next": "^15",
     "postcss": "^8.4.38",
     "react": "^18.3.1",
