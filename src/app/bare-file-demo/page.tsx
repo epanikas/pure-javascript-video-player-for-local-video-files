@@ -4,8 +4,8 @@ import {JSX, useRef} from "react"
 import {useState} from "react";
 import {ChangeEvent} from "react";
 import {MutableRefObject} from "react";
-import {MP4BoxBuffer} from "mp4box-forked";
-import * as MP4Box from "mp4box-forked"
+import {MP4BoxBuffer} from "mp4box";
+import * as MP4Box from "mp4box"
 
 
 MP4Box.Log.setLogLevel(MP4Box.Log.info)
