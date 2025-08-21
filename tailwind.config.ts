@@ -13,17 +13,17 @@ const config: Config = {
         "./public/site/**/*.yaml",
     ],
 
-    theme: {
-        extend: {
-            typography: {
-                DEFAULT: {
-                    css: {
-                        maxWidth: 'unset', // add required value here
-                    }
-                }
-            }
-        },
-    },
+    // theme: {
+    //     extend: {
+    //         typography: {
+    //             DEFAULT: {
+    //                 css: {
+    //                     maxWidth: 'unset', // add required value here
+    //                 }
+    //             }
+    //         }
+    //     },
+    // },
     plugins: [
         typo.default(),
     ],
