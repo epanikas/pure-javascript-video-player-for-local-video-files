@@ -18,6 +18,8 @@ type VideoSegment = {
     data: FileData
 }
 
+const BUFFER_SIZE_BYTES = 32768;
+
 
 MP4Box.Log.setLogLevel(MP4Box.Log.info)
 
@@ -40,15 +42,13 @@ function TestPlayVideoSegmented(): JSX.Element {
     const [mp4boxBytesRead, setMp4boxBytesRead] = useState<number>(0);
     const [mp4BoxFileInfo, setMp4BoxFileInfo] = useState<MP4Box.Movie | null>(null);
     const [isFFMpegLoading, setIsFFMpegLoading] = useState<boolean>(false);
-    const [downloadFragmentedUrl, setDownloadFragmentedUrl] = useState<{name: string, url: string}[]>([]);
+    const [downloadFragmentedUrls, setDownloadFragmentedUrls] = useState<{name: string, url: string}[]>([]);
 
     let myMediaSource: MediaSource;
     const videoSourceBuffer: MutableRefObject<SourceBuffer | null> = useRef(null);
 
-    let isLastSegment = false;
     const segments: VideoSegment[] =[]
     var nextBufferStart = 0;
-    const BUFFER_SIZE_BYTES = 32768;
 
     function appendNextVideoSegment() {
         console.log("videoSourceBuffer", videoSourceBuffer)
@@ -57,14 +57,13 @@ function TestPlayVideoSegmented(): JSX.Element {
         }
         const segment: VideoSegment | undefined = segments.shift()
         if (segment) {
-            // isLastSegment = segment.last;
             if (typeof segment.data === "string") {
                 videoSourceBuffer.current.appendBuffer(Buffer.from(segment.data))
             } else {
                 videoSourceBuffer.current.appendBuffer(typedArrayToBuffer(segment.data))
             }
         } else {
-            if (/*isLastSegment*/isFragmentationFinished) {
+            if (isFragmentationFinished) {
                 if (myMediaSource.readyState === 'open') {
                     myMediaSource.endOfStream()
                 }
@@ -129,23 +128,17 @@ function TestPlayVideoSegmented(): JSX.Element {
         loadFFMpeg();
     }, []);
 
-    async function onReadFile(selectedFile: File,
-                        onFileInfoReadyCb: (info: MP4Box.Movie) => void): Promise<void> {
+    async function onReadFile(selectedFile: File, onFileInfoReadyCb: (info: MP4Box.Movie) => void): Promise<void> {
 
         const mp4BoxFile: MP4Box.ISOFile<unknown, unknown> = createMp4BoxFile(onFileInfoReadyCb);
-
-        // selectedFile.stream().pipeTo(readStreamIntoMp4IsoFile(mp4BoxFile, bytesToProgress));
 
         while (!isInfoLoaded) {
             const chunk = await selectedFile.slice(nextBufferStart, nextBufferStart + BUFFER_SIZE_BYTES).arrayBuffer();
             console.log("reading file chunk at", nextBufferStart)
             const ab: MP4BoxBuffer = MP4BoxBuffer.fromArrayBuffer(chunk, nextBufferStart)
-            // nextBufferStart += chunk.length
             nextBufferStart = mp4BoxFile.appendBuffer(ab, false);
         }
     }
-
-
 
     return (
         <div className={"p-5 flex flex-col items-center justify-center"}>
@@ -183,17 +176,25 @@ function TestPlayVideoSegmented(): JSX.Element {
                     </div>
                     <div>
                         <button type={"button"}
-                                onClick={() => onFragmentFile(selectedFile!, ffmpegRef.current, (f: FileData) => {
-                                    console.log("received segment from ffmpeg", f.length)
-                                    segments.push({data: f});
-                                    appendNextVideoSegment();
-                                })}
+                                onClick={() => onFragmentFile(selectedFile!, ffmpegRef.current,
+                                    (f: FileData) => {
+                                        console.log("received segment from ffmpeg", f.length)
+                                        segments.push({data: f});
+                                        appendNextVideoSegment();
+                                    },
+                                    (name: string, url: string) => {
+                                    console.log("appending download url for file ", name)
+                                        downloadFragmentedUrls.push({name, url})
+                                        setDownloadFragmentedUrls(downloadFragmentedUrls.slice())
+                                    })}
                                 className="mt-10 text-white bg-cyan-700 hover:bg-cyan-800 focus:ring-4 focus:ring-cyan -300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-cyan-600 dark:hover:bg-cyan-700 focus:outline-none dark:focus:ring-cyan-800" >
                             Fragment file {selectedFile?.name}
                         </button>
-                        {downloadFragmentedUrl && downloadFragmentedUrl
-                            .map(dfu =>
-                                <a href={dfu.url} download={`fragmented-${dfu.name}`}>download fragmented file {dfu.name}</a>)
+
+                        {downloadFragmentedUrls &&
+                                downloadFragmentedUrls
+                                    .map(dfu =>
+                                        <a key={dfu.name} href={dfu.url} download={`fragmented-${dfu.name}`}>download fragmented file {dfu.name}</a>)
                         }
                     </div>
                 </div>
@@ -289,14 +290,6 @@ function createMp4BoxFile(onFileInfoReadyCb: (info: MP4Box.Movie) => void): MP4B
     mp4BoxFile.onReady = (info: MP4Box.Movie) => {
         console.info("received movie info", info);
 
-        // var options = { nbSamples: 1000, sizePerSegment: 1048576  /*1Mb*/};
-        // for (let i = 0; i < info.tracks.length; ++i) {
-        //     if (supportedTrackTypes.filter(t => t == info.tracks[i].type).length > 0) {
-        //         console.log("adding segmentation option for track ", info.tracks[i].id, info.tracks[i].type)
-        //         mp4BoxFile.setSegmentOptions(info.tracks[i].id, info.tracks[i].type, options);
-        //     }
-        // }
-
         onFileInfoReadyCb(info)
     };
 
@@ -307,57 +300,13 @@ function typedArrayToBuffer(array: Uint8Array): ArrayBuffer {
     return array.buffer.slice(array.byteOffset, array.byteLength + array.byteOffset) as ArrayBuffer
 }
 
-// function readStreamIntoMp4IsoFile(mp4boxFile: MP4Box.ISOFile<unknown, unknown>,
-//                                   setMp4boxLodingProgress: (p: number) => void): WritableStream<Uint8Array<ArrayBufferLike>> {
-//
-//     var nextBufferStart = 0;
-//
-//     // function typedArrayToBuffer(array: Uint8Array): ArrayBuffer {
-//     //     return array.buffer.slice(array.byteOffset, array.byteLength + array.byteOffset) as ArrayBuffer
-//     // }
-//
-//
-//     return new WritableStream<Uint8Array<ArrayBufferLike>>({
-//
-//             start: async (controller: WritableStreamDefaultController): Promise<void> => {
-//                 console.log("readStreamIntoMp4IsoFile.start")
-//             },
-//             write: async (chunk: Uint8Array<ArrayBufferLike>, controller: WritableStreamDefaultController): Promise<void> => {
-//                 const ab: MP4BoxBuffer = MP4BoxBuffer.fromArrayBuffer(typedArrayToBuffer(chunk), nextBufferStart)
-//                 nextBufferStart += chunk.length
-//                 mp4boxFile.appendBuffer(ab, false);
-//                 setMp4boxLodingProgress(nextBufferStart)
-//             },
-//             close: async (): Promise<void> =>  {
-//                 console.log("readStreamIntoMp4IsoFile.close")
-//                 mp4boxFile.flush();
-//                 setMp4boxLodingProgress(nextBufferStart)
-//             },
-//             abort: async (reason: any): Promise<void> => {
-//                 console.log("readStreamIntoMp4IsoFile.abort" + reason)
-//             },
-//         },
-//         {
-//             highWaterMark: 3,
-//             size: () => 1,
-//         },
-//     );
-// }
+async function onFragmentFile(selectedFile: File, ffmpeg: FFmpeg,
+                              enqueueVideoSegment: (f: FileData) => void,
+                              appendDownloadDataBlobUrl: (name: string, url: string) => void): Promise<void> {
 
-async function onFragmentFile(selectedFile: File, ffmpeg: FFmpeg, enqueueVideoSegment: (f: FileData) => void): Promise<void> {
+    await ffmpeg.writeFile("/" + selectedFile.name, await fetchFile(selectedFile ));
 
-    // u can use 'https://ffmpegwasm.netlify.app/video/video-15s.avi' to download the video to public folder for testing
-    await ffmpeg.writeFile(
-        // "/input.avi",
-        "/" + selectedFile.name,
-        await fetchFile(selectedFile/*
-            "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/video-15s.avi"*/
-        )
-    );
-
-    // await ffmpeg.deleteDir("/fragmented-output")
     await ffmpeg.createDir("/fragmented-output")
-
 
     const processListDir = async () => {
         const listdir: FSNode[] = await ffmpeg.listDir("/fragmented-output");
@@ -367,12 +316,14 @@ async function onFragmentFile(selectedFile: File, ffmpeg: FFmpeg, enqueueVideoSe
             .sort((a: FSNode, b: FSNode): number => a.name < b.name ? -1 : 1)
             .map(async (d: FSNode) => {
                 const data: FileData = (await ffmpeg.readFile(`/fragmented-output/${d.name}`)) as FileData;
+
                 enqueueVideoSegment(data)
 
                 console.log("data is ", data.length, d.name)
 
-                // var dataBlob: Blob = new Blob([data as Uint8Array], {type: "video/mp4"});
-                // const textFile = window.URL.createObjectURL(dataBlob);
+                var dataBlob: Blob = new Blob([typedArrayToBuffer(data as Uint8Array)], {type: "video/mp4"});
+                const dataBlobUrl = window.URL.createObjectURL(dataBlob);
+                appendDownloadDataBlobUrl(d.name, dataBlobUrl)
 
                 await ffmpeg.deleteFile(`/fragmented-output/${d.name}`);
 
@@ -388,11 +339,6 @@ async function onFragmentFile(selectedFile: File, ffmpeg: FFmpeg, enqueueVideoSe
 
     }
     setTimeout(processListDir, 2000)
-
-    // const interval = setInterval(async () => {
-    //
-    //
-    // }, 200)
 
     // const res = await ffmpeg.exec([
     //     "-i", "/" + selectedFile.name/*"/input.avi"*/,
@@ -435,8 +381,6 @@ async function onFragmentFile(selectedFile: File, ffmpeg: FFmpeg, enqueueVideoSe
         "/fragmented-output/output.mp4"
     ]);
     console.log("fragmenting res", res)
-
-    // clearInterval(interval);
 
 
     isFragmentationFinished = true;
