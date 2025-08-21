@@ -9,6 +9,8 @@
     "start": "next start -p 3001"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@dotenvx/dotenvx": "^1.44.2",
     "@tailwindcss/typography": "^0.5.15",
     "@types/node": "^20.12.11",
@@ -21,7 +23,7 @@
     "dotenv": "^16.5.0",
     "eslint": "^8.56.0",
     "eslint-config-next": "^15.0.3",
-    "mp4box": "^1.4.6",
+    "mp4box-forked": "../../../ws_nodejs/mp4box-forked.js",
     "next": "^15",
     "postcss": "^8.4.38",
     "react": "^18.3.1",
